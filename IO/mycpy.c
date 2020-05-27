@@ -8,6 +8,7 @@ int main(int argc,char **argv)
         fprintf(stderr,"Usage error,need more argument...mycpy <src> <dest>\n");
         exit(1);
     }
+    printf("%d,%s,%s,%s",argc,argv[0],argv[1],argv[2]);
     FILE *fps,*fpd;
     int ch,re; //一定要定义int,因为失败的时候返回值是-1,在任何标准C中char型都没有定义符号的类型.
 
