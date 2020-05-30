@@ -7,7 +7,7 @@
 
 #define BUFSIZE 10
 
-int main(int argc,char ** argv)
+int main(int argc,char ** argv) 2 
 {
     int sfd,dfd;                    // file description
     char buf[BUFSIZE];
