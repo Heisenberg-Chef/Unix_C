@@ -28,18 +28,25 @@ static void clac_day(int i)
 int main(int argc,char ** argv)
 {
     //  -n -N
-    while((ch = getopt(argc,argv,"n:N:"))!= -1){
+    while((ch = getopt(argc,argv,"d:D:?hH"))!= -1){
         switch (ch)
         {
-        case 'n':
-        case 'N':
+        case 'd':
+        case 'D':
             i = atoi(optarg);
             break;
+        case '?':
+        case 'h':
+        case 'H':
+            printf("Usage:[-d|-D] [offset day(s)] \n\n");
+            break;
         default:
+            printf("Usage:[-d|-D] [offset day(s)] \nThis tiny program designed my Heisenberg aka Ray....\n\n");
             break;
         }
     }
-
+    printf("\n\n");
     clac_day(i);
+    printf("\n\n");
     exit(0);
 }
