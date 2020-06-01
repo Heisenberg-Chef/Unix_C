@@ -7,14 +7,9 @@
 
 int main(int argc,char ** argv)
 {
-    if(argc < 2)
-    {
-        fprintf(stderr,"Usage...\n");
-        exit(1);
-    }
-
-
-
-
+    char * input_pass,* encrypted_pass;
+    input_pass = getpass("Password:");
+    encrypted_pass = crypt("$6$Heisenberg$",input_pass);
+    printf("Original password:%40s\nEncrtpted password:%40s\n",input_pass,encrypted_pass);
     exit(0);
 }
