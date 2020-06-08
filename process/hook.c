@@ -23,6 +23,5 @@ int main()
     atexit(f1);
     atexit(f2);
     atexit(f3);
-
     puts("End\n");
 }
