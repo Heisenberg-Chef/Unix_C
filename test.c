@@ -4,17 +4,20 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+typedef void function_template(void);
+typedef void (*function_template2)(void);
 
+
+void func()
+{
+    printf("hello world\n");
+}
 
 int main()
 {
-    int fd;
-    fd = open("/dev/null",O_RDWR);
-    dup2(fd,STDOUT_FILENO);
-    printf("File descriptor : %d\n",fd);
-    fflush(NULL);
-    write(STDOUT_FILENO,"Hello world!\n",13);
-    // dup2(1,fd);
-    // write(1,"Hello world!\n",13);
+    function_template * a = func;
+    a();
+    function_template2 b =func;
+    b();
     return 0;
 }

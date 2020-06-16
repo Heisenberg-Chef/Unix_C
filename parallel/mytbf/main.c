@@ -5,24 +5,18 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include "mytbf.h"
 
-#define CPS 10          // charactors per second.
-#define BUFSIZE CPS 
+#define CPS 10
+#define BUFSIZE 1024
 #define BURST 100
-static volatile int token = 0;
 
-static void clock_handler(int interupt)
-{
-    alarm(1); 
-    if(token < BURST)
-        token++;
-}
 int main(int argc,char ** argv)
 {
     int sfd,dfd = 1;                    // file description
     char buf[BUFSIZE];
-    int len,ret,pos=0; // 读取长度
-
+    int size,len,ret,pos=0; // 读取长度
+    mytbf_t * tbf;
     umask(0000);
     if(argc<2)
     {
@@ -53,17 +47,16 @@ int main(int argc,char ** argv)
         }
     } while (dfd < 0);
 
-    signal(SIGALRM,clock_handler);
-    alarm(1);
-
+    tbf = mytbf_init(CPS,BURST);
+    if(tbf == NULL)
+    {
+        fprintf(stderr,"mytbf_init() failed\n");
+        exit(1);
+    }
     while(1)
     {
-        while(token <= 0)
-        {
-            pause(); //禁止CPU忙等
-        }
-        token--;   //读取一次token - 1
-        while((len = read(sfd,buf,BUFSIZE)) < 0)    // 0
+        size = mytbf_fetchtoken(tbf,BUFSIZE);
+        while((len = read(sfd,buf,size)) < 0)    // 0
         {
             if(errno == EINTR)
                 continue;   //假错误 跳转到 0
@@ -74,6 +67,9 @@ int main(int argc,char ** argv)
         {
             break;
         }
+        if(size - len > 0)
+            mytbf_returntoken(tbf,size - len);
+        pos = 0;
         while(len >0)   // 1
         {
             ret = write(dfd,buf,len);
@@ -91,7 +87,7 @@ int main(int argc,char ** argv)
 
     }
     close(sfd);
-    close(dfd);
+    mytbf_destory(tbf);
     exit(0);
 }
 /*  这是一个漏桶实例

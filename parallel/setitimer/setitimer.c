@@ -4,24 +4,26 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <errno.h>
 
-#define CPS 10          // charactors per second.
+#define CPS 1          // charactors per second.
 #define BUFSIZE CPS 
-#define BURST 100
-static volatile int token = 0;
+
+static volatile int loop = 1;
 
 static void clock_handler(int interupt)
 {
-    alarm(1); 
-    if(token < BURST)
-        token++;
+    // alarm(1);  //    使用setitimer可以省去循环调用的操作,在kernal中进行了封装
+    loop = 0;
 }
 int main(int argc,char ** argv)
 {
     int sfd,dfd = 1;                    // file description
     char buf[BUFSIZE];
     int len,ret,pos=0; // 读取长度
+    struct itimerval it;
+
 
     umask(0000);
     if(argc<2)
@@ -54,15 +56,20 @@ int main(int argc,char ** argv)
     } while (dfd < 0);
 
     signal(SIGALRM,clock_handler);
-    alarm(1);
+    //  alarm(1);
+    it.it_interval.tv_sec = 0;
+    it.it_interval.tv_usec = 4000;
+    it.it_value.tv_sec = 0;
+    it.it_value.tv_usec = 4000;
+    setitimer(ITIMER_REAL,&it,NULL);
 
     while(1)
     {
-        while(token <= 0)
+        while(loop)
         {
             pause(); //禁止CPU忙等
         }
-        token--;   //读取一次token - 1
+        loop = 1;   //出循环马上把标记改为1
         while((len = read(sfd,buf,BUFSIZE)) < 0)    // 0
         {
             if(errno == EINTR)

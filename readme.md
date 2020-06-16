@@ -1,16 +1,5 @@
-##  前言
-+   项目需求:目前需要实现基于客户机和服务器的模型的网络音频点播系统.
-    +   本音频系统可以广泛应用在语音教室和公共广播的多种场所,该软件分为服务器和客户机2个部分,服务器运行在PC机上,客户端可运行在PC机或嵌入式设备上,服务器以多波的方式向局域网中所有客户机发送数据,客户机可以根据自己的选择来决定要接受的数据.
-  +   广播/点播系统
-    +   在server端,守护进程脱离终端!IO脱离终端,出错或者出现异常之后要有系统日志
-+ 注意事项:
-    1. 弃用root用户
-    2. 重构
-##  IO
-z    +   优先调用标准IO可以屏蔽系统调用的函数.
-    +   fopen unix-->open windows-->openfile这样移植性很好.
-+   动态内存申请:malloc-->realloc
-+   getline:#define _GUN_SOURCE 宏不一定必须有宏值,但是是对别的宏功能的一种封装,它可能存在于其他的文件之中.
+
+ine _GUN_SOURCE 宏不一定必须有宏值,但是是对别的宏功能的一种封装,它可能存在于其他的文件之中.
     +   这个程序一直是在realloc一点点往外扩大空间.所以再初始化的时候把指针和linesize都安全初始化,在使用完了之后把这些内存都free()掉.这个api容易造成可控的内存泄漏.
     +   getline是GUN中的,不存在标准库中.
 +   int fflush(FILE *stream):fflush()是一个C语言标准输入输出的库中的函数,功能是冲洗流中的信息,该函数通常用于处理磁盘文件,fflush会强制缓冲区的数据写入指定的stream中.
@@ -445,7 +434,11 @@ EXAMPLES
     +   启动脚本文件:/etc/rc*.... 可以在这里面加上.
 ## 并发
 信号与线程很少一块使用.不要大范围的混用信号和线程
-### 信号来实现并发
+
+---
+
+## 信号来实现并发
+
 Semaphore..
 
 同步:电脑上的都是同步事件.
@@ -465,9 +458,172 @@ HUP INT QUIT ILL TRAP ABRT EMT FPE KILL BUS SEGV SYS PIPE ALRM TERM URG STOP TST
 + core 文件是程序的某一个现场,一般是错误的现场:做一个段错误,ulimit -c 1 可以产生一个core文件,可以在选项中加入gdb进行调试,
 
 +   signal():sig_t signal(int sig,sig_t func);第一个为信号第二个为行为,返回之前动作的函数. 在man手册的第三章节中写了对于sig_t的宏定义,void (*signal(int sig,void (\*func)(int)))(int); --> 或者更好阅读的方式可以看到 .... typedef void (\*sig_t)(int).
+    +   signal重新定义的handler是一个void func(int)的函数,给这个handler传入的参数就是信号的标记号.
     +   这种函数调用的暴露了C的一个大问题,名空间安排不善,也就是C++中的namespace,C中并没有,如果2个库都倒霉的有一个函数名字,那么就**炸**了
 +   当我们使用ctrl+c,发送sigint信号,把我们的进程中断,他的默认功能是终止一个进程.我们可以注册一个信号行为使用signal
     +   使用SIG_IGN --- >IGNORE 忽略这个信号.
     +   使用SIG_DEL ---> default 恢复这个信号
-    +   **信号会阻塞的系统调用.**
-### 多线程来实现并发
+    +   **信号会阻塞的系统调用:例如write & read 系统调用,EINTR,当我们打开一个比较慢的设备的时候,如果发生了信号,那么会打断阻塞进程,所以会出现EINTR,可以理解为假的错误.
+####    信号的不可靠
+信号的行为是不可靠的, 在我们调用信号的时候,内存执行线程是内核帮我们布置的,当一个信号在处理的时候如果来了第二个信号,那么执行线程就被覆盖了,不能恢复进去了.
++   最后做成了一个链式结构来恢复现场.
+####    可重入函数
+第一次调用还没结束,但是第二次调用就发生还没有报错,就叫做可重入函数.
++   所有的系统调用都是可重入的(但是不是所有的可重入的都是系统调用),有一部分库函数也是可重入的,memcpy就是一个
+    +   rand() :生成随机数是不可能重入的函数,但是rand_r就是可以重入的.int rand_r(int * seedp);非原子操作放在静态区上的时候就会出现可重入现象,这次调用没完成,就遇到了调用,就有可能出现了第二次的调用吧第一次的调用冲掉了.所以一般Reuseful函数就让你传一个你指定的地址,来保存地址,防止被信号冲刷掉
+
+####    信号的响应过程
+例子
+```
+main --> 打印*
+interrupt --> 打印!
+mask --> 信号屏蔽字 bitmap 11111111111....
+pending --> 记录当前的进程收到那些信号 bitmap  10000001000000...
+是内核为每一个进程维护这2个位图
+```
+信号从收到 到响应有一个不可避免的延迟.思考:*如何忽略掉的一个信号的?标准信号为什么要丢失?*
+1.  当我们收到了一个信号的时候,抓内核,然后内核让你等待,当轮到你的进程的时候mask & pending ---> 这样才能发现信号(没有中断打断进行之前的过程你就一直看不到信号,需要一个中断打断现场进入内核态的.)
+2.  当发现信号以后,我们恢复现场的时候addr位置就被换成了之前已经注册好的信号处理函数...并且执行
+3.  当我们处理完了信号处理函数,我们要把mask 恢复全 1,在把地址替换会刚才的中断时刻的现场,继续执行我们的进程.
++   标准信号的缺陷:在接收到多个信号的时候没有严格的顺序.(一般是响应错误,严重.这种级别的.)<br>而且有一定延迟.还会丢失(位图,当来了10000个信号 位图上面只能表现1个...)
++   信号是在kernal -> user 的路上响应的.
++   SIG_IGN  就是把mask位置置0了.&不出来了哈哈哈哈.
+#####   不能从信号处理函数中随意的往外跳.所以在我们用setjmp -- longjmp中,就要使用sigsetjmp(),跳转的时候保存信号.
+
+####    kill 并非是杀死一个进程
+kill的真正的功能是给一个进程发送一个信号.int kill(pid,sig);
+
+####    raise()
+int raise(sig) == kill(getpid(),sig);   多进程.    pthread_kill(pthread_self(),sig);    多进程.
+
+####    alarm() 是一个计时器.
+unsigned int alarm(unsigned int seconds);以秒为单位及时,到了时间之后会发出时间信号,SIGALRM默认是杀死这个进程,但是可以使用signal()进行重定位信号
++   alarm是不能实现了多任务的计时器,他只能做一个任务的计时器.
+
+####    pause() 可以让我们程序不进行忙等.
+在我们的循环中加入一个pause(),可以让程序进行等待一个信号,而不是忙等,忙等大量占用CPU.
++   sleep --> alarm + pause ,是这样的一种封装.由于alarm只能实现最近一次,所以如果我使用了alarm信号 那么我的时钟信号就有问题.
++   unix中用的nanosleep进行的封装还好一些.
+
+##### 在C当中使用优化,他只会检测到自己内存中的数据,如果有信号那么他会优化错误,循环体中没有用到loop但是没有考虑到信号的影响
+
+####    多任务的时钟定时器 setitimer | alarm
+文件描述符就是给一个给定数组的下标.
++   alarm只能用秒来技术,而且每次只能用一个信号,对于时间的控制相对僵硬.
++   setitimer() | getitimer():
+    +   int getitimer(int which,struct itimerval * value);
+    +   int setitimer(int which,const struct itimerval * restrict value,struct itimerval *restrict ovalue);
+        +   存在一个结构体struct itimerval:误差不累计
+    +   其中int which的值
+        +   ITIMER_REAL,时间的减少率是正常的,当时间耗尽了,一个SIGALRM信号就会被接受.
+        +   ITIMER_VIRTUAL,下降率为进程的虚拟时间,这个时间只可以在进程中使用.
+        +   ITIMER_PROF,这个时间设置在所有进程和系统级别中生效,重启之后可以使用,会发送SIGPROF信号(少用这玩意.).
+```
+           struct itimerval {
+                   struct  timeval it_interval;    /* timer interval */
+                   struct  timeval it_value;       /* current value */
+           };
+
+it_interval --> setitimer可以自己循环调用自身的间隔.
+it_value --> setitimer 第一次调用的时间.
+```
+####    abort()
+给当前进程发送一个SIGABRT信号,产生一个calldown文件.
+
+####    system()
+system() executes a command specified in command by call "/bin/sh -c".**During execution of the command,SIGCHLD will be blocked,and SIGINT and SIGQUIT will be ignored.**
+
+####    sleep()
+在某些平台下使用alarm + pause进行封装.
++   在macos下使用的nanosleep进行封装的.可以用nanosleep进行.
++   usleep() --> 使用的微秒为单位进行封装.
++   int select(int nfds,fd_set \* restrict readfds,fd_set \* restrict writefds,fd_set \* errorfds,struct timeval \*timeout);这个是用来IO多路转接的,但是超时设置也是可以进行时间控制的.
+####    信号集
+man sigemptyset.....
+
+这些函数操作信号集,存储在sigset_t类型中
+
+
+
++   sigaddset
++   sigdelset
++   sigemptyset
++   sigfillset
++   sigismember
+
+####    信号屏蔽字/pending集的处理
+sigprocmask() --> 当前信号的状态,可以block信号,是位图的形式.给一种方式进行信号的控制.
+```
+int sigprocmask(int how,const sigset_t * set,sigset_t * oset);
+
+how-->如何操作 SIG_BLOCK,SIG_UNBLOCK,SIG_SETMASK
+
+```
+我们无法控制信号何时发出但是可以控制信号可不可以被收到.
+
++   进入我们模块之前信号是什么样的,那么出去还是什么样,这是一个编程的思想.要保持调用恢复现场.
++   sigpending(sig_t * set);把我现在收到的信号拿回来(基本没啥用).
+
+####    拓展
++   sigsuspend():atomically release blocked signals and wait for interrupt.
++   sigaction():可以用来替代signal这个函数,是一个可以让多个信号都使用的一个函数.如果使用signal()就会有重入的风险,信号是可以嵌套来调用的.多个信号来了之后就有可能会重复调用.
++   signal并不会区分信号的来源,使用signaction()就可以区分信号的来源.
+####    getcontext
++  int getcontext(ucontext * ucp);
++  int setcontext(const ucontext * ucp);
+
+#####   CTRL + \  : QUIT3 是程序退出
+####    实时信号
+为了弥补标准信号的不足,标准信号先响应,然后再调用实时信号.
+
+信号处理函数,一般就用用系统调用,防止可重入发生.
+---
+
+## 多线程来实现并发
+线程:说白了就是一个正在运行的函数,一个进程之中至少只有一个线程在进行,多开几个并发的函数就是多线程.<br>
+
+其实我们可以不以main作为入口出口的,main函数也是一个线程,他们之前的关系是兄弟.
+
+多线程的并发是现有的标准再有的实现,相对于更古老的信号,各个系统更加
+
+POSIX线程是一套标准,而不是实现(openmp标准下的线程,也是约定了一种多线程的并发.它的并发不是从语言的角度),线程的标准不是实现,
+
++   线程的标识:pthread_t (POSIX THREAD)...具体是什么类型不知道它仅仅是一个标准不是一种实现方式.
+
++   进程就是一个容器,是用来承载线程的,线程号也是用进程号来进行标记的.
+
+### 线程的创建
+pthread_t类型具体是什么,我们也不知道,不要使用%d来打印thread!在不同环境下是不同的.
++   int pthread_create(pthread_t \*thread,const pthread_attr_t \*attr,void \*(\*start_routine)(void \*),void \*arg) 创建一个线程:线程的调度取决于调度器的策略,就有可能在创建的新线程还没有执行的时候就结束了.
+```
+[Running] cd "/Users/qilei/Desktop/APUE/thread/posix/" && gcc create1.c -o create1 && "/Users/qilei/Desktop/APUE/thread/posix/"create1
+Begin!
+
+End!
+
+
+[Done] exited with code=0 in 0.134 seconds
+
+[Running] cd "/Users/qilei/Desktop/APUE/thread/posix/" && gcc create1.c -o create1 && "/Users/qilei/Desktop/APUE/thread/posix/"create1
+Begin!
+
+End!
+
+Thread is working!
+```
+
+####    线程的终止
++   线程终止的三种方式:
+    1.  线程从启动历程返回,返回值就是线程的退出码.
+    2.  线程可以被同一个进程中的其他线程取消.
+    3.  线程调用pthread_exit()函数. < -- 用这个! 不要*return NULL*,那样不能用清理栈.
+    +   pthread_join(pthread_t thread,void \*\*value_ptr); --> 相当于wait(),但是可以指定线程,可以进行收尸.
+    
++   栈的清理: 
+    +   void pthread_cleanup_push(void (*routine)(void *)); ---> atexit() 挂钩子:
+    +   pthread_cleanup_pop(int execute); ---> 取钩子
++   线程的取消选项:
+
+---
++   pthread_equal() 比较2个线程号是不是相同.
++   pthread_self() 返回线程的标识.
