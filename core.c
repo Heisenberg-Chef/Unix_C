@@ -12,7 +12,7 @@ int main(int argc,char ** argv)
     fp = fopen("core.c","r");
     
     fp = NULL;
-
+    
     fread(&linebuf,10,10,fp);
 
     while(1)

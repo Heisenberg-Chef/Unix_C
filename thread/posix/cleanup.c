@@ -3,6 +3,27 @@
 #include <pthread.h>
 #include <string.h>
 
+static void cleanup_func(void* p)
+{
+    puts(p);
+}
+
+static void * func(void *p)
+{
+    puts("thread is working.\n");
+    pthread_cleanup_push(cleanup_func,"cleanup:1");
+    pthread_cleanup_push(cleanup_func,"cleanup:2");
+    pthread_cleanup_push(cleanup_func,"cleanup:3");
+
+    puts("push over.\n");
+
+    pthread_cleanup_pop(1);
+    pthread_cleanup_pop(1);
+    pthread_cleanup_pop(1);
+
+    pthread_exit(NULL);
+}
+
 int main()
 {
     pthread_t tid;
@@ -14,11 +35,7 @@ int main()
     {
         fprintf(stderr,"pthread_create():%s\n",strerror(err));
     }
-    
+    pthread_join(tid,NULL);
     puts("End...\n");
-
-
-
-
     exit(0);
 }
