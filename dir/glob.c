@@ -7,7 +7,7 @@
 static int errfunc_(const char * errpath,int eerrno)
 {
     puts(errpath);
-    fprintf(stderr,"ERROR MSG: %s\n",strerror(eerrno));
+    fprintf(stderr,"ERROR MSG: %s\n",strerror(errno));
     return 0;
 }
 #endif
