@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define LEFT 300000000
-#define RIGHT 300000200
+#define LEFT 30000000
+#define RIGHT 30000200
 
 int main()
 {

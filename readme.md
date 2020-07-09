@@ -615,15 +615,52 @@ Thread is working!
 ####    线程的终止
 +   线程终止的三种方式:
     1.  线程从启动历程返回,返回值就是线程的退出码.
-    2.  线程可以被同一个进程中的其他线程取消.
+    2.  线程可以被同一个进程中的其他线程取消.(算线程异常终止)
     3.  线程调用pthread_exit()函数. < -- 用这个! 不要*return NULL*,那样不能用清理栈.
     +   pthread_join(pthread_t thread,void \*\*value_ptr); --> 相当于wait(),但是可以指定线程,可以进行收尸.
     
 +   栈的清理: 
     +   void pthread_cleanup_push(void (*routine)(void *)); ---> atexit() 挂钩子:
-    +   pthread_cleanup_pop(int execute); ---> 取钩子
+    +   pthread_cleanup_pop(int execute); ---> 取钩子,调用这个钩子函数.
+    +   这两个函数必须**成对**出现,在预处理时候会有办个{ ; 后办个半个};在pop中.这一对对的push & pop必须要写,就算写在执行不到的地方也要写上,否则编译是不通过的.
 +   线程的取消选项:
+    <!--+   在取消的哪一个时刻,如果有线程的释放操作没有做到,那么我们可以用到pthread_cleanup_push | pop 来进行操作-->
+    +   thread_cancel():这个函数用来在另一个线程还没有结束的时候发送一个取消请求.
+        +   取消的两种状态:允许,不允许.(有点像sigmask设置后对于信号不响应.)--- 允许取消又分为*异步取消*,*推迟取消(默认的)*-->它会推迟到cancel点再取消.POSIX定义的cancel点,都是可能引发阻塞的系统调用.
+    +   int pthread_setcancelstate(int state,int \*oldstate);用来设置是否允许取消.
+    +   int pthread(int type,int \* oldtype);设置取消方式(异步-->死机,推迟-->一般都是这个)
+    +   int pthread_testcancel(void);设置一个取消点.
++   线程分离:
+    +   int pthread_detach(pthread_t thread);
 
+<small>在产生竞争的时候,多个线程可能会发生正常执行,有几率出错,而且每一次发现的结果是不一样的.</small>
+
+在我们调试程序的时候sleep可以用来加大竞争冲突的概率,在等待的时候等于加长了操作的时间长度,更容易发生冲突
+
+32位机器最多能开启300个左右的进程,因为在user态只能用到3G不到,我们的3G需要在当前内存空间中可以创建多少个10m大小的栈.如果我们要多创建,可以改变栈的大小.
+
+64位环境内存可以128T的取值空间.
+
+### 线程的同步
+互斥量:(mutex)
++   int pthread_mutex_destory(pthread_mutex_t * mutex)
++   int pthread_mutex_initA(pthread_mutex_t * restrict mutex,const pthread_mutexattr_t * restrict attr);
+    +   pthread_mutex_t mutex = PTHREAD_MUTEX_INITALIZED
+
+#### 多线程池类算法的竞争.
+在单核机器中,竞争不是很明显,可以使用sleep来放大竞争关系.
+
+我们解决线程之间的竞争的时候需要引入**线程同步**
+    +   互斥量: int pthread_mutex_init(pthread_mutex_t \* mutex,const pthread_mutexattr_t \* attr);--->This function creates a new mutex , with attributes specified with attr.If attr is NULL the default attributes are used.在我们初始化锁之后.我们可以使用下面几个函数对我们创建的锁进行操作:
+        1.  pthread_mutex_destory
+        2.  pthread_mutex_lock  阻塞
+        3.  pthread_mutex_trylock   非阻塞
+        4.  pthread_mutex_unlock
+        5.  pthread_mutexattr
+        +   在进入互斥区的时候lock 出互斥区的时候unlock.
+    +   lock是阻塞的线程锁,其他的人都会被阻塞.在循环执行多个线程时候可以使用锁链.   在lock住之后,这个线程就不能跑了.之后在unlock之后才可以放行.
+
+在我们的代码中如果有一块文件处理函数,一次只能允许一个线程|进程,进行处理,那么这块区域就叫做临界区,在抢占式的程序中,在我们进入临界区之前,我们要用互斥锁把这个区域的代码给锁上,在出来时候来再进行解锁.
 ---
 +   pthread_equal() 比较2个线程号是不是相同.
 +   pthread_self() 返回线程的标识.
