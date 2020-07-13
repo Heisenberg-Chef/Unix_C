@@ -1,5 +1,8 @@
 /*
-条件变量
+这个程序是一个忙等的模式,上游一直在while中等待Num = 0
+下游一直在while中等待num != 0;
+忙等的忙是因为使用了查询法来进行状态查询
+使用通知法可以解决问题
 */
 //#############################################################################################
 #include <stdio.h>
@@ -14,7 +17,6 @@
 
 static int num = 0;
 static pthread_mutex_t mut_num = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t cond_num = PTHREAD_COND_INITIALIZER;
 
 static void * thr_prime(void * p);
 
@@ -39,13 +41,11 @@ int main()
         pthread_mutex_lock(&mut_num);
         while(num != 0)
         {
-            pthread_cond_wait(&cond_num,&mut_num);
-            // pthread_mutex_unlock(&mut_num);
-            // sched_yield();  // 调度状态颠簸去除,非常短的一个sleep而且不会造成线程的颠簸,
-            // pthread_mutex_lock(&mut_num);
+            pthread_mutex_unlock(&mut_num);
+            sched_yield();  // 调度状态颠簸去除,非常短的一个sleep而且不会造成线程的颠簸,
+            pthread_mutex_lock(&mut_num);
         }
         num = i;
-        
         pthread_mutex_unlock(&mut_num);
         //sched_yield();
     }
@@ -53,10 +53,9 @@ int main()
     pthread_mutex_lock(&mut_num);
     while(num != 0) //  为了防止最后一个结束时候吧其他的任务抢走,我们在这里继续让它等待
     {
-        pthread_cond_wait(&cond_num,&mut_num);
-        // pthread_mutex_unlock(&mut_num);
-        // sched_yield();
-        // pthread_mutex_lock(&mut_num);
+        pthread_mutex_unlock(&mut_num);
+        sched_yield();
+        pthread_mutex_lock(&mut_num);
     }
     num = -1;
     pthread_mutex_unlock(&mut_num);
@@ -65,7 +64,7 @@ int main()
     {
         pthread_join(tid[i],NULL);
     }
-    pthread_cond_destroy(&cond_num);
+
     pthread_mutex_destroy(&mut_num);    //  保证独占,在名字上区分,在我们即将推出main线程的时候,销毁互斥量.
     exit(0);
 }
@@ -79,21 +78,18 @@ static void * thr_prime(void * p)
 
         while(num == 0)
         {
-            pthread_cond_wait(&cond_num,&mut_num);
-            // pthread_mutex_unlock(&mut_num);
-            // sched_yield();
-            // pthread_mutex_lock(&mut_num);
+            pthread_mutex_unlock(&mut_num);
+            sched_yield();
+            pthread_mutex_lock(&mut_num);
         }
 
         if(num == -1)
         {
-            pthread_cond_broadcast(&cond_num);
             pthread_mutex_unlock(&mut_num); //  一定要进行解锁,否则跳转之前会造成死锁
             break;
         }
         i = num;
         num = 0;
-        pthread_cond_broadcast(&cond_num);
         pthread_mutex_unlock(&mut_num);
         //  开始计算
         for(j = 2;j<i/2;j++)
