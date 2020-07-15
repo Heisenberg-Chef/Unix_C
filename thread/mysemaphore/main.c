@@ -10,7 +10,7 @@
 #include "mysem.h"
 
 #define LEFT 1
-#define RIGHT 10
+#define RIGHT 100000
 #define THRNUM (RIGHT - LEFT)
 #define N 4
 
