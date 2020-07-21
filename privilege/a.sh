@@ -1,6 +1,4 @@
-#!/bin/bash
-
-
+#!/bin/zsh
 ls
 whoami
 cat /etc/passwd
