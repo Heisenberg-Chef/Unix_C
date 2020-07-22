@@ -7,11 +7,11 @@ int main()
 {
     ftok();
 
-    msgget
+    msgget();
 
-    msgsnd
+    msgsnd();
 
-    msgctl
+    msgctl();
 
 
 }
