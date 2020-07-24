@@ -7,13 +7,11 @@
 #define KEYPATH "./services"
 #define KEYPROJ 'g'     //  整形数
 #define NAMESIZE 1024
+
 struct msg_st{
     char name[NAMESIZE];
     int math;
     int chinese;
-
-
-
 };
 
 #endif
