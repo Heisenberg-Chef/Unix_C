@@ -15,7 +15,11 @@ int main()
     }
     //  设置socket
     int val = 1;
-    setsockopt(sd,SOL_SOCKET,SO_BROADCAST,&val,sizeof(val));
+    if(setsockopt(sd,SOL_SOCKET,SO_BROADCAST,&val,sizeof(val)))
+    {
+        perror("setsockopt();");
+        exit(1);
+    }
 
     strcpy((char *)sbuf.name,"Ray");
     sbuf.math = htonl(rand()%100);

@@ -19,10 +19,10 @@ int main()
     sbuf.chinese = htonl(rand()%100);
 
     raddr.sin_family = AF_INET;
-    raddr.sin_port = htons(atoi((RCVPROT))); // 转换 通过网络发射出去
+    raddr.sin_port = htons(atoi(("12121"))); // 转换 通过网络发射出去
     inet_pton(sd,"127.0.0.1",&raddr.sin_addr.s_addr);
     //bind
-    if(sendto(sd,(void*)&sbuf,sizeof(sbuf),MSG_DONTROUTE,(void*)&raddr,sizeof(raddr))<0)   // datagram  send()---stream
+    if(sendto(sd,(void*)&sbuf,sizeof(sbuf),MSG_DONTROUTE,(void*)&raddr,sizeof(struct sockaddr_in))<0)   // datagram  send()---stream
     {
         perror("sendto()");
         exit(1);
@@ -30,8 +30,5 @@ int main()
     puts("ok");
 
     close(sd);
-
-
-
     exit(0);
 }

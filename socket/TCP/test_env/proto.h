@@ -13,7 +13,7 @@
 #define PROTO_H__
 
 #define NAMESIZE    11      // 选一个,一定不对齐的长度
-#define RCVPROT     "7122"    // 选1024以上的端口,到时候用的时候使用atoi转换一下
+#define RCVPROT     18990   // 选1024以上的端口,到时候用的时候使用atoi转换一下 
 
 struct msg_st
 {
