@@ -1,4 +1,8 @@
+# 介绍
+这是我个人学习unix高级环境编程的一个笔记,没什么亮点,代码基本都能在GNU的编译器下面跑起来,编辑器用的vscode.
 
+总体上杂乱无章的,个人的一个过程记录而已并没有太大的参考价值,大牛请绕道吧
+## 基础开场白
 ine _GUN_SOURCE 宏不一定必须有宏值,但是是对别的宏功能的一种封装,它可能存在于其他的文件之中.
     +   这个程序一直是在realloc一点点往外扩大空间.所以再初始化的时候把指针和linesize都安全初始化,在使用完了之后把这些内存都free()掉.这个api容易造成可控的内存泄漏.
     +   getline是GUN中的,不存在标准库中.
@@ -503,7 +507,8 @@ unsigned int alarm(unsigned int seconds);以秒为单位及时,到了时间之�
 ####    pause() 可以让我们程序不进行忙等.
 在我们的循环中加入一个pause(),可以让程序进行等待一个信号,而不是忙等,忙等大量占用CPU.
 +   sleep --> alarm + pause ,是这样的一种封装.由于alarm只能实现最近一次,所以如果我使用了alarm信号 那么我的时钟信号就有问题.
-+   unix中用的nanosleep进行的封装还好一些.
++   usleep :微秒进行单位从而等待,这个就不是alarm + pause进行封装的了
++   unix中用的nanosleep进行的封装还好一些.因为是纳秒级别的函数所以一定不是alarm + pause进行封装的了,而且nanosleep存在于 time.h中,所以windows上可以移植.
 
 ##### 在C当中使用优化,他只会检测到自己内存中的数据,如果有信号那么他会优化错误,循环体中没有用到loop但是没有考虑到信号的影响
 
@@ -623,6 +628,7 @@ Thread is working!
     +   void pthread_cleanup_push(void (*routine)(void *)); ---> atexit() 挂钩子:
     +   pthread_cleanup_pop(int execute); ---> 取钩子,调用这个钩子函数.
     +   这两个函数必须**成对**出现,在预处理时候会有办个{ ; 后办个半个};在pop中.这一对对的push & pop必须要写,就算写在执行不到的地方也要写上,否则编译是不通过的.
+
 +   线程的取消选项:
     <!--+   在取消的哪一个时刻,如果有线程的释放操作没有做到,那么我们可以用到pthread_cleanup_push | pop 来进行操作-->
     +   thread_cancel():这个函数用来在另一个线程还没有结束的时候发送一个取消请求.
@@ -630,6 +636,10 @@ Thread is working!
     +   int pthread_setcancelstate(int state,int \*oldstate);用来设置是否允许取消.
     +   int pthread(int type,int \* oldtype);设置取消方式(异步-->死机,推迟-->一般都是这个)
     +   int pthread_testcancel(void);设置一个取消点.
+
++   线程的取消:例如一个二叉树10000层,我们在查找一个元素的时候,第一个线程就查找到了.后面的就不用在进行运行了我们就可以用到线程取消
+    +   int pthread_cancel(pthread_t thread);从而我们可以先把线程给取消执行,再执行 int pthread_join(pthread_t pthread)来回收我们的多余的线程.
+
 +   线程分离:
     +   int pthread_detach(pthread_t thread);
 
@@ -644,10 +654,24 @@ Thread is working!
 ### 线程的同步
 互斥量:(mutex)
 +   int pthread_mutex_destory(pthread_mutex_t * mutex)
-+   int pthread_mutex_initA(pthread_mutex_t * restrict mutex,const pthread_mutexattr_t * restrict attr);
-    +   pthread_mutex_t mutex = PTHREAD_MUTEX_INITALIZED
 
-#### 多线程池类算法的竞争.
+posix抽象了一个锁类型的概念,来保证共享数据的操作完整性,每个对象都是对应一个可称之为"互斥锁"的标记,这个标记用来保证在任意时刻只能有一个线程访问该对象.使用互斥锁可以使线程按顺序执行.通常互斥锁通过确保一次只有一个线程执行临界区来同步多个线程,互斥锁还可以保护单线程的代码,要更改互斥锁属性,可以对属性对象进行声明和初始化.**通常互斥锁属性会设置在应用程序开头的某个位置**.
+
+1.   int pthread_mutex_init(pthread_mutex_t * restrict mutex,const pthread_mutexattr_t * restrict attr);
+2.   pthread_mutex_t mutex = PTHREAD_MUTEX_INITALIZED
+
+1中的函数是以动态的方式创建一个互斥锁,attr参数指定了互斥锁的属性,如果参数attr为NULL,则使用默认的互斥锁属性,默认属性为快速互斥锁.在LinuxThreads实现中仅有一个锁类型属性,不同的锁类型在试图对一个已经被锁定的锁枷锁的时候反应式不同的,如果初始化成功返回0,并且互斥锁为未锁定状态,2中的行为就是静态初始化.
+
+互斥锁的属性是创建的时候就规定的,在Linux中仅有一个锁的属性,不同的所得类型在视图对一个已经被互斥锁枷锁时候表现不同,道歉有4个值可以选择
++   PTHREAD_MUTEX_TIMED_NP,这是默认值,也就是普通锁,当一个线程枷锁以后其余请求锁的线程将形成一个等待队列,并在解锁后按照优先级获得锁,这种锁的策略保障了资源分配的公平性.
++   PTHREAD_MUTEX_RECURSIVE_NP,嵌套锁,允许同一个线程对同一个锁成功获得几次,并且通过多次unlock解锁,如果是不同线程请求,则在枷锁解锁时候重新竞争.
++   PTHREAD_MUTEX_ERRORCHECK_NP,检错锁,如果同一个线程请求同一个锁,则返回EDEADLK,否则与PTHREAD_MUTEX_TIMED_NP类型动作相同,这样保证当允许多次加锁时不出现最简单情况下死锁
++   PTHREAD_MUTEX_ADAPTIVE_NP,适应所,动作最简单的锁的类型,仅等待解锁后重新竞争.
+
+####    解锁操作
+解锁的操作主要包括加锁lock,解锁unlock,尝试加锁trylock,无论哪种锁,都不可能被2个不同的线程同时得到,必须等待解锁,对于普通锁和适应锁类型,解锁线程可以是同进程内任何线程;而检错锁则必须由加锁者解锁材有效,否则会返回EPERM,对于潜逃所,文档和实现要求必须由加锁者解锁,但是实验表明并没有这种限制,在同一个进程中,如果加锁后没有解锁,则任何其他线程都无法获得锁.
+
+
 在单核机器中,竞争不是很明显,可以使用sleep来放大竞争关系.
 
 我们解决线程之间的竞争的时候需要引入**线程同步**
@@ -661,6 +685,558 @@ Thread is working!
     +   lock是阻塞的线程锁,其他的人都会被阻塞.在循环执行多个线程时候可以使用锁链.   在lock住之后,这个线程就不能跑了.之后在unlock之后才可以放行.
 
 在我们的代码中如果有一块文件处理函数,一次只能允许一个线程|进程,进行处理,那么这块区域就叫做临界区,在抢占式的程序中,在我们进入临界区之前,我们要用互斥锁把这个区域的代码给锁上,在出来时候来再进行解锁.
+
+```
+/* mutex.c */
+#include <stdlib.h>
+#include <stdio.h>
+#include <pthread.h>
+#include <errno.h>
+#include <unistd.h>
+
+/* 全局变量 */
+int gnum = 0;
+/* 互斥量 */
+pthread_mutex_t mutex;
+
+/* 声明线程运行服务程序. */
+static void pthread_func_1(void);
+static void pthread_func_2(void);
+
+int main (void)
+{
+ /*线程的标识符*/
+  pthread_t pt_1 = 0;
+  pthread_t pt_2 = 0;
+  int ret = 0;
+
+  /* 互斥初始化. */
+  pthread_mutex_init(&mutex, NULL);
+  /*分别创建线程1、2*/
+  ret = pthread_create(&pt_1,  //线程标识符指针
+                       NULL,  //默认属性
+                       (void*)pthread_func_1, //运行函数
+                       NULL); //无参数
+  if (ret != 0)
+  {
+     perror ("pthread_1_create");
+  }
+
+  ret = pthread_create(&pt_2, //线程标识符指针
+                       NULL,  //默认属性
+                       (void *)pthread_func_2, //运行函数
+                       NULL); //无参数
+  if (ret != 0)
+  {
+     perror ("pthread_2_create");
+  }
+  /*等待线程1、2的结束*/
+  pthread_join(pt_1, NULL);
+  pthread_join(pt_2, NULL);
+
+  printf ("main programme exit!/n");
+  return 0;
+}
+
+/*线程1的服务程序*/
+static void pthread_func_1(void)
+{
+  int i = 0;
+
+  for (i=0; i<3; i++) {
+    printf ("This is pthread_1!/n");
+    pthread_mutex_lock(&mutex); /* 获取互斥锁 */
+    /* 注意，这里以防线程的抢占，以造成一个线程在另一个线程sleep时多次访问互斥资源，所以sleep要在得到互斥锁后调用. */
+    sleep(1);
+    /*临界资源*/
+    gnum++;
+    printf ("Thread_1 add one to num:%d/n", gnum);
+    pthread_mutex_unlock(&mutex); /* 释放互斥锁. */
+  }
+
+  pthread_exit(NULL);
+}
+
+/*线程2的服务程序*/
+static void pthread_func_2(void)
+{
+  int i = 0;
+
+  for (i=0; i<5; i++)  {
+    printf ("This is pthread_2!/n");
+    pthread_mutex_lock(&mutex); /* 获取互斥锁. */
+    /* 注意，这里以防线程的抢占，以造成一个线程在另一个线程sleep时多次访问互斥资源，所以sleep要在得到互斥锁后调用. */
+    sleep(1);
+    /* 临界资源. */
+    gnum++;
+    printf ("Thread_2 add one to num:%d/n",gnum);
+    pthread_mutex_unlock(&mutex); /* 释放互斥锁. */
+  }
+
+  pthread_exit (NULL);
+}
+```
+
+在我们线程函数内部加上一个lock来占用这个锁,通过函数内部占用绑定对应的线程,只有释放之后才可以继续调用
+####    互斥的概念
+在多线程的编程中,引入了对象互斥锁的概念,来保证共享数据操作的完整性,每个对象都对应于一个可称为"互斥锁"的标记,这个标记用来保证在任意时刻,~~只能有一个线程访问该对象~~
+
+#### 多线程池类算法的竞争
+分块,交叉分配
+线程之间通信特别方便,所以用一个池类算法
++   sched_yield();出让调度器给别的线程,不能造成进程的颠簸:this function cases the calling thread to relinquish the CPU.The thread is moved to the end of the queue for its static priority abd a new thread gets to run.这个函数会让当前的线程让出CPU占有权,然后把线程放到静态优先队列的尾端,然后一个新的线程会占用CPU.简单的来讲就是让当前线程让出资源通过一定的调度策略让其他的线程也可以有机会运行到.
++   在临界区中一定要注意跳转函数,goto longjmp break [函数调用] ,都算是跳转,会造成死锁一定要解锁之后在进行跳转
+```
+pthread_mutex_unlock(&mut_num);
+sched_yield();
+pthread_mutex_lock(&mut_num);
+---
+先解锁,调度器让出线程.
+```
+
+池类算法是一种能者多劳的模式,比较科学的一种算法.
+
+
+####    高性能并发系统的阻流(令牌桶)
+常见的限流算法有两种:(1)漏桶算法,(2)令牌桶算法
++   漏桶算法:思路很简单,请求先进入到漏桶里面,漏桶以一定速度出水,当水流入速度过大只会溢出.
++   令牌桶算法:在写一个分布式服务的框架时候,对于分布式服务的框架来说除了远程调用,还要进行服务的治理,例如当进行双十一促销的时候所有的资源都用来完成总要的业务,主要任务就是让用户查询商品,购买支付,此时金币查询,积分查询等等业务就是次要的,要对这些服务进行降级处理,这就是典型的令牌桶算法,因此在写框架的时候一定要研究好令牌桶算法.在我们实施QOS(Quality of Service:服务质量)策略的时候,当用户的流量超过了额定的带宽的时候,超过的带宽将使用其他的方式进行处理,要衡量流量是否超过额定的带宽,网络设备并不是采用单纯的数字加减法来决定的,当网络设备衡量流量是否超过额定带宽时候需要查看令牌桶,令牌桶中会放置一些令牌,当同种没有令牌的时候任何流量都被视为超过额定带宽,只有当同种有令牌时,数据才可以通过接口,令牌桶中的令牌不仅仅被移除,同样也可以往里添加所以为了保证接口随时有数据通过,就必须不停地往桶里加令牌的速度,就决定了数据通过接口的速度,因此我们通过控制往令牌桶里加令牌的速度从而控制用户流量的带宽,在设置用户传输数据的速率被称作信息速率
+
+####    条件变量(通知法)
+pthread_cond_t 控制类型
++   pthread_cond_init(pthread_cond_t \*cond,const pthread_condattr_t \* attr);
+```
+SEE ALSO
+     pthread_cond_broadcast(3), pthread_cond_destroy(3), pthread_cond_signal(3),
+     pthread_cond_timedwait(3), pthread_cond_wait(3), pthread_condattr(3)
+```
+
+#####   等待和激发
+使用pthread_cond_timedwait(3),可以进行非忙等的阻塞状态
+
+使用pthread_cond_wait(3),可以进入非忙等的阻塞状态
+
+无论哪种等待方式,都必须和一个互斥锁配合,以防止多线程请求pthrad_cond_wait()时候的京城条件,mutex必须是普通的互斥锁(NULL),在调用本线程的pthread_cond_wait()之前必须给线程加锁pthread_mutex_lock(),而且在更新条件等待队列之前,mutex必须保持锁定的状态,并在线程被挂起之前mutex解锁..........在条件满足之后可以离开pthread_cond_wait()之前,mutex必须重新进入锁定状态以进入pthread_cond_wait()前的加锁动作对应,**阻塞时候一定是处于解锁状态的**.
+
+当我们要激发条件的时候有两种形式, pthread_cond_signal()激活一个等待该条件的线程,存在多个等待的入队顺序的时候则按照入队顺序逐个进行激活解锁,而broadcast()则会激活所有的线程.
+
+####    信号量(pv)
+信号量是区别与之前说到的互斥量mutex,mutex是独立出来的,而信号量并不是互斥的.
+
+token ++ token --;
+哲学家吃面问题作为例子
+
+互斥量mutex可以理解为boolean,信号量可以理解为int类型 可以++ --;
+
+信号量并没有单独的机制,在C程序中要用互斥量加信号量来完成这个操作,一切的基础是mutex.
+
+减少资源量,有人需要更多的资源量,有人需要1个,所以要判断val >= 请求的资源量
+
+####    读写锁
+相当于互斥量 & 互斥量的相互协同的使用,在读写锁中有读锁|写锁,写是互斥的,读是信号的
+
+### 线程属性
++   pthread_attr_init(pthread_attr_t \* attr);
++   pthread_attr_destroy(pthread_attr_t \* attr);
+可以对进程的属性进行设置
+```
+     int
+     pthread_attr_getschedparam(const pthread_attr_t *attr, struct sched_param *param);
+
+     int
+     pthread_attr_setschedpolicy(pthread_attr_t *attr, int policy);
+
+     int
+     pthread_attr_getschedpolicy(const pthread_attr_t *attr, int *policy);
+
+     int
+     pthread_attr_setscope(pthread_attr_t *attr, int contentionscope);
+
+     int
+     pthread_attr_getscope(const pthread_attr_t *attr, int *contentionscope);
+
+    int
+         pthread_attr_setstacksize(pthread_attr_t *attr, size_t stacksize);
+    
+     int
+     pthread_attr_getstacksize(const pthread_attr_t *attr, size_t *stacksize);
+```
+
+对于线程属性pthread库中定义了线程属性的结构体
+```
+ typedef struct
+    {
+           int                           detachstate;     线程的分离状态
+           int                          schedpolicy;   线程调度策略
+           struct sched_param      schedparam;   线程的调度参数
+           int                          inheritsched;    线程的继承性
+           int                          scope;          线程的作用域
+           size_t                      guardsize; 线程栈末尾的警戒缓冲区大小
+           int                          stackaddr_set;
+           void *                     stackaddr;      线程栈的位置
+           size_t                      stacksize;       线程栈的大小
+    }pthread_attr_t;
+```
+1.  分离状态:线程的分离状态主要决定了以什么样的方式来终结自己.在**默认的情况下**,线城市使用非分离状态来终结自己的,只有当pthread_join()函数进行收回之后,线程才算是完全终止并且释放了自己占用的系统资源.**通俗的来说**,join得意义就是我们想知道它的结束状态,如果我们不想知道那么这种无意义的等待回收是毫无意义的,所以我们可以使用"分离"属性,线程无须等待管理,只要线程自己结束那么资源也就释放了
+    +   int pthread_attr_getdetachstate(const pthread_attr_t \* attr,int \* detachstate);
+    +   int pthread_attr_setdetachstate(pthread_attr_t \* attr,int detachstate);
+    +   PTHREAD_CREATE_DETACHED 分离状态
+    +   PTHREAD_CREATE_JOINABLE 正常启动
+2.  继承状态:使用函数pthread_attr_setinheritsched和pthread_attr_getinheritsched分别用来设置和得到线程的继承性.默认的集成设置里面并不是继承,继承性确定调度的参数是**创建线程中继承**还是在**schedpolicy和scheparam属性**中显示设置的调度信息
+    +   调度策略:
+        +   SCHED_FIFO:先进先出
+        +   SCHED_RR:轮转法
+        +   SCHED_OTHER:其他
+    +   调度参数:
+        +   本身参数就是优先级:policy越大优先级越大
+3.  线程的作用域:作用域控制线程是否在进程内或在系统级上竞争资源,PTHREAD_SCOPE_PROCESS(进程内竞争资源),PTHREAD_SCOPE_SYSTEM(系统竞争资源).
+    +   int pthread_attr_getscope(const pthread_attr_t \* attr,int \* scope);
+    +   int pthread_attr_setscope(pyhread_attr_t \*, int scope);
+4.  线程堆栈的大小:stacksize
+5.  线程堆栈地址
+6.  警戒缓冲区:guardsize控制着线程栈尾以后以避免栈溢出的扩展内存大小,这个属性默认设置为PAGESIZE个字节,可以把guardsize栈属性设置为0,从而不允许这种特征行为发生,在这种情况下不会提供警戒缓冲区,同样的,如果对线程stackaddr做了修改,系统会自己认为我们会管理栈,并使这种警戒缓冲区机制无效,等同于guardsize==0.
+
+####    线程创建
+线程的创建比进程的创建要省事儿,进程的创建需要重新创建一个C的环境出来,线程相当于一个进程中的一个函数,相对于进程来说资源的消耗&文件的访问&多并发之间的通信都是很方便的.
+
+####    互斥量的属性
+1.  pthread_mutexattr_init()
+2.  pthread_mutexattr_destroy()
+3.  pthread_mutexattr_getpshared()
+4.  pthread_mutexattr_setpshared()
+5.  clone()-->mac中没有,只有在linux有,也是创建一个子*进程*,父子进程可以共享一个描述符.
+
+控制互斥量是否可以跨进程来获取.包括**控制量**等等都有这种操作
+
+### 重入
+posix规定如果这个库发布出来了,如果不支持多线程并发,就要标记出来.puts 就是支持的,这个函数在操作缓冲区的时候会锁住缓冲区在进行unlock.
+
+getchar就不行,如果我们写的单进程版本就要加上**unlocked版本**.
+
+####    线程与信号
+每一个线程都有自己的一个mask 和 pending
++   pthread_sigmask(int how,const sigset_t \* set,sigset \*)
++   pthread_kill
++   sigwait()
+
+####    线程与fork
+openmp --> www.OpenMP.org 另一种线程的标准
+
+posix是一个线程的实现标准,定义的是实现的方法,C语言本身不支持并发,所以在函数级别有一定的操作调用.
+
+openmp是一套通过编译器进行的并发的C语言标准,在GCC 4.0 以后可以使用openmp语法标记,是跨语言的比较简单的一套并发标准.
 ---
 +   pthread_equal() 比较2个线程号是不是相同.
 +   pthread_self() 返回线程的标识.
+
+##  高级IO
+在我们学习了线程,进程,信号等机制之后就可以进一步的理解IO,IO是我们实现的基础.很多东西可以去查man 7章节,这里面的东西是讲的机制.
++   非阻塞IO:try to do 
++   阻塞IO:waiting till we do.
+
+对于我们的IO有2个错误比较坑,ERRINT 由于我们的设备比较慢会告诉你被打断了.EAGIN不是真正意义的出错,尝试去做没有成功.这2个都是假错.
+
+高级IO主要研究就是非阻塞的IO,*补充*:有限状态机的编程思想.
+
+### 非阻塞IO
+数据中继,2个设备操作过程为:rl-wr-rr-wl,多任务来完成这种操作,端有数据哪一端就先走.很多数据的拦截模型就是数据中继模型,让数据过一下我的服务端.其实就是之前写的mycpy.
+
+### 有限状态机
+简单流程:如果一个程序的自然流程是结构化的,那么就叫做简单流程
+
+复杂流程:如果一个程序的自然流程不是结构化的,那么就是复杂流程.
+
+自然流程:用人类正常的顺序选择循环.
+
+复杂流程往往都是复杂流程.C是逻辑化的编程语言,C++是模块化的编程语言[类的思想是非常适合人类的思想的方式].
+
+####    文件描述符控制函数
+fcntl()  F_GETFL & F_GETFL 
+
+### IO多路转接
+监视文件描述符的行为,当文件描述符符合行为才进行操作.实现**非忙等**的程序.
++   select();移植性很好,比较古老.int select(int nfds, fd_set *restrict readfds, fd_set *restrict writefds,fd_set *restrict errorfds, struct timeval *restrict timeout);
+    +   可以用select()做一个安全的休眠select(-1,NULL,NULL,NULL,time);没有给这个描述符控制函数具体任务,只是让他等一会.
+    +   缺点:监视的现场和监视的任务在一块空间,监视一次之后就会自己释放.文件描述符是int类型所以文件描述符只能是用正数的部分而且不能超过这部分Max(fd1,fd2)+1.监视的时间单一,只有读写
++   int poll(struct pollfd fds[],nfds_t nfds,int timeout);一文件描述符为单位查看是否可以开始这件时间.
++   epoll();是linux的高效优化版本的poll().
+
+网络IO的本质socket的读取,socket在linux系统被抽象为了流的概念,流可以被作为对象操作.对于一次访问IO(以read举例),数据会先被拷贝到操作系统内核缓冲区中,然后才会从操作系统内核缓冲区拷贝到应用程序的地址空间,所以说当一个read法师时候他会经历:
+    1.  等待数据准备
+    2.  将数据拷贝到进程中
+    
+对于socket流来说:
+    1.  通常涉及等待网络上的数据分组到达,然后复制到内核的某个缓冲区.
+    2.  把数据从内核缓冲区复制到应用进程缓冲区.
+
+其实网络应用处理的问题无非两大类:网络IO,数据计算,相对于后者来说,网络IO的延迟给应用带来的性能瓶颈大于后者,网络IO的模型大致有如下特点:
++   同步IO:
+    1.  阻塞IO
+    2.  非阻塞IO
+    3.  多路复用IO
+    4.  信号驱动IO
++   异步IO(asynchronous IO)
+
+####    阻塞IO
+进程会一直阻塞,直到数据拷贝完成.阻塞的意义就是CPU"被"休息,用户空间的app 执行了系统调用(recvform),这回导致系统应用程序的阻塞什么也不干直到数据准备好,因此从处理的角度来看是非常有效的.
+####    非阻塞IO
+非阻塞IO通过进程反复调用IO函数(多次系统调用,马上返回);在数据拷贝过程中,进程是阻塞的,同步非阻塞就是"每过一会就瞄一眼进度条(polling)轮询法方式,这种模型中,设备是以非阻塞打开的这意味这IO操作不会立即返回,read操作可能会返回一个错误代码,这说明不能立即满足(EAGAIN EWOULDBLOCK);
+
+在网络IO时候,非阻塞也会进行recvfrom的系统调用,检查数据是否准备好.与阻塞IO不一样,"非阻塞"将大的整片时间的阻塞分解成多个小的阻塞,所以进程有机会不断地被CPU光顾.
+
+####    多路复用IO
+主要是select和poll;对一个IO端口,两次调用两次返回,最大的优点就是可以同时监听多个IO端口进行监听
+
+####    信号驱动IO
+两次调用,两次返回,允许socket进行信号驱动IO,并安装一个信号处理函数,进程继续运行并不阻塞,当数据准备好了,进程会收到一个SIGIO的信号,可以在信号处理函数中调用IO操作处理数据.
+####    异步IO
+数据进行拷贝的时候无需阻塞,相对于同步IO,异步IO并不是顺序的,用户进程进行aio_read系统调用之后,无论内核数据是否准备好都会直接返回给用户进程,然后用户态进程可以去做别的事情,等到socket数据准备好了,内核直接复制数据给进程,然后从内核向进程发送通知,IO两个阶段都是非阻塞的:
+    
+### 其他读写
+readv(),writev()读写一些字符向多个地址
+
+## 存储映射IO(挺有用的)
+void * mmap(void *addr,size_t len,int prot,int flags,int fd,off_t offset);根据man手册说明,mmap是从addr开始到len个字节结束,向fd描述符输入这些内存的数据,使用mmap可以做一个非常快的共享内存.
+
+munmap() 相当于free()函数.
+
+小结:mmap函数是讲一个文件或其他内存对象映射进内存,文件被映射到多个页上,如果文件大小不是所有页的大小之和,最后一个页不会使用并且清零.
++   补充:内存分页机制.在保护模式中,内存的访问使用的是分段机制--段基地址:段内偏移地址,为了加强段内存的保护和可管理性.还引入了*段描述符*的概念对内存进行管理,但是还是不能满足需求,计算机技术迭代,应用程序越来越多,内存碎片也随之增加,对于内存的换入换出,引出了内存的置换.
++   在大多数情况下,将一些进程的不常用的内存段换入换出来腾出更多的内存空间,虽然硬盘是低速设备,在这两种设备之间交换内存是对时间的一种浪费,但是使用合理的置换算法
+---
+这个函数做有亲缘关系的进程之间的通信是非常好的..
+
+### 文件锁
+限制文件的操作,给文件加锁.
++   fcntl():改变打开文件的性质,针对文件描述符的控制,可以对文件描述符加锁,还可以记录对某一个文件的某一个记录上锁,也就是记录锁.
++   lockf():课程主要讲的是这个函数,函数原型是int lockf(int fildes,int function,off_t size)参数分别为文件描述符 | 功能选项(F_ULOCK F_LOCK F_TLOCK F_TEST) | 从零开始的偏移量是多少[锁 & 解锁]
++   flock()
+
+##  进程间的通信
+数组顺序存储的队列来扩大空间,加大上游的任务,这个队列叫做管道.unix内核为我们提供了一个管道,这个管道适合不同进程通信,在我们的线程通信中,还是自定义临界区比较方便而且效率更高..
+    
+    
+### 管道通信方式
+####    匿名管道 p
+类似[tmpfile 直接给我返回一个file * 我就直接操作就行了],拿着标识符我可以操作,但是如果进程没有血缘关系是不能进行通信的.
+
+pipe(),pipe2()
+####    命名管道 p
+我们可以在磁盘上找到这个文件.管道是单工通信的,自同步机制.阻塞->等||判断写者是否存在,流速控制
+
+开头为p的文件就是命名管道:int mkfifo() 函数,
+
+terminal 中有一个*mkfifo*创建一个管道文件,必须凑齐读写双方才能进行.
+
+**管道是单工的**,如果希望实现一个双工通信要用至少2个管道
+### XSI  ->  SysV 
+IPC -> Inter-Process Communicaiton.
+```
+qilei@bogon APUE % ipcs
+IPC status from <running system> as of Tue Jul 21 14:18:10 CST 2020
+T     ID     KEY        MODE       OWNER    GROUP
+Message Queues:
+
+T     ID     KEY        MODE       OWNER    GROUP
+Shared Memory:
+
+T     ID     KEY        MODE       OWNER    GROUP
+Semaphores:
+s  65536 0x6104a436 --ra-ra-ra-    qilei    staff
+```
+KEY:没有亲缘关系的进程的通信ftok();~~这一组函数特点就是xxxget 创建对象,xxxop 对对象操作,xxxctl 控制|初始化  shm->share memory ,msg,sem,~~
++   消息队列:msg
++   信号量数组:ftok->semget->semctl->semop,在资源抢占的时候应该合理的分配资源量,不满足的量可以继续向后找是否有可以满足条件的任务.不对其资源进行顺序的独占.
+
+### Socket通信
+
+#### 跨主机的信息传输
+字节序:大端低地址放高字节|小端低地址放低字节,因此我们来区分主机host字节序和网络network字节序[_ to _ _ : htons,htonl,ntohs,ntohl,16位s,32位l]
+
+对齐:例如结构体
+```
+struct {
+    int i;
+    char ch;
+    float f;
+};
+会占用12字节,需要对齐,0%4[0-3],0%1[4],8%4[8-11],因此出现了567 3个字节空白的空间.
+```
+我们需要告诉编译器不对齐:gcc中结构体默认是4个字节对齐，即为32的倍数。
+```
+修改字节对齐：
+
+struct data{
+int a;
+char b;
+char c;
+}__attribute__((aligned(8))) data;
+
+或
+
+#pragma pack(8)
+struct data{
+int a;
+char b;
+char c;
+}data;
+#pragma pack() 
+```
+综上所述：用来对齐的，包括栈对齐，变量地址对齐内存分配对齐的几种方式如下：
+
++   #pragma pack(n):n的取值可以为1、2、4、8、16，在编译过程中按照n个字结对齐
++   #pragma pack():取消对齐，按照编译器的优化对齐方式对齐
++   __attribute__ ((packed));:是说取消结构在编译过程中的优化对齐。
++   __attribute__ ((aligned (n)));:让所作用的成员对齐在n字节自然边界上,如果结构中有成员的长度大于n，则按照最大成员的长度来对齐
+
++   __attribute__(())是GNU CC的一大特色,这个机制可以设置函数属性,变量属性,类型属性,==语法格式为 __attribute__((attributr-list))==,放于声明的尾部之前:
+    1.  aligned(4) 对齐到4个字节
+    2.  packed 不对齐
+    3.  format:该属性可以给声明的函数上加上类似printf或者scanf的特征,他可以使编译器检查函数声明和函数实际调用参数之间的格式化字符串是否匹配,* format (archetype, string-index, first-to-check)*
+
+
+---
+C语言在定义字符长度的时候并没有明确规定,int32_t,int64_t,uint32_t,char == int8_t
+
+socket是一个中间层,IPv4协议,IPX协议,协议族来指定,可以用流式传输,包式传输.socket都支持,socket把上下传输都抽象成一个文件描述符.最后可以使用stdio封装成为一个FILE \* 来进行操作.
+
+AF_UNIX,AF_LOCAL 本地协议
+AF_PIX Novell-->古董
+AF_NETLINK 一个内核接口,做一些系统调用,内核的代码可以使用报式形式进行通信
+AF_PACKET 底层协议,抓包器用的就是这个.
+
+#### 报式套接字
+被动端:
+1.  取得socket
+2.  给socket取得地址
+3.  收发消息
+4.  关闭socket
+
+主动端:
+1.  取得socket
+2.  给socket取得地址
+3.  收发消息
+4.  关闭socket
+
+被动端先运行,2步骤给socket绑定一个地址.
+[在这其中有一个麻烦,我的macos系统的man手册不是很齐全]我摘抄了一部分网上的资料.
+
++   sockaddr其定义如下：
+
+```
+struct sockaddr {
+　　unsigned short sa_family; /* address family, AF_xxx */
+　　char sa_data[14]; /* 14 bytes of protocol address */
+　　};
+```
+说明：
+
+sa_family ：是2字节的地址家族，一般都是“AF_xxx”的形式，它的值包括三种：AF_INET，AF_INET6和AF_UNSPEC。
+
+如果指定AF_INET，那么函数就不能返回任何IPV6相关的地址信息；如果仅指定了AF_INET6，则就不能返回任何IPV4地址信息。
+
+AF_UNSPEC则意味着函数返回的是适用于指定主机名和服务名且适合任何协议族的地址。如果某个主机既有AAAA记录(IPV6)地址，同时又有A记录(IPV4)地址，那么AAAA记录将作为sockaddr_in6结构返回，而A记录则作为sockaddr_in结构返回通常用的都是AF_INET。
+
++   sockaddr_in其定义如下：
+
+```
+struct sockaddr_in {
+　　short int sin_family; /* Address family */
+　　unsigned short int sin_port; /* Port number */
+　　struct in_addr sin_addr; /* Internet address */
+　　unsigned char sin_zero[8]; /* Same size as struct sockaddr */
+　　};
+```
+
++   sin_family：指代协议族，在socket编程中只能是AF_INET
++   sin_port：存储端口号（使用网络字节顺序）
++   sin_addr：存储IP地址，使用in_addr这个数据结构
++   sin_zero：是为了让sockaddr与sockaddr_in两个数据结构保持大小相同而保留的空字节。
+
++   而其中in_addr结构的定义如下：
+
+```
+typedef struct in_addr {
+　　union {
+　　struct{ unsigned char s_b1,s_b2, s_b3,s_b4;} S_un_b;
+　　struct{ unsigned short s_w1, s_w2;} S_un_w;
+　　unsigned long S_addr;
+　　} S_un;
+　　} IN_ADDR;
+```
+
+struct sockaddr 这种结构体是捏造出来的,本来就没有这种类型.
+
+阐述下in_addr的含义，很显然它是一个存储ip地址的共用体有三种表达方式：
++   第一种用四个字节来表示IP地址的四个数字；
++   第二种用两个双字节来表示IP地址；
++   第三种用一个长整型来表示IP地址。给in_addr赋值的一种最简单方法是使用inet_addr函数，它可以把一个代表IP地址的字符串赋值转换为in_addr类型，如addrto.sin_addr.s_addr=inet_addr("192.168.0.2");
+
+其反函数是inet_ntoa，可以把一个in_addr类型转换为一个字符串。
+
+##### 转换函数 htons() 将整形变量从主机的字节序转换为网络字节序,整数的高位字节存放在低字节的地址空间,也就是小端序
+
+##### 点分式与数值转换 int inet_pton(int af,)
+
+在报文套接字中使用recvfrom来接受,要知道从哪里来的,而流式套接字只需要recv就行了
+
+sendto 中有一个flag:MSG\_OOB"带外数据"将数据放在下一个可用缓冲区中,并且设置紧急指针指向下一个可用的缓冲区空间
++   这个是发送和接收数据时的一个选择值，如果用它则表示需要发送和接收带外数据。带外数据（也称为TCP紧急数据），可以在应用程序中用来处理紧急数据。协议的实现为了提高效率，往往在应用层传来少量的数据时不马上发送，而是等到数据缓冲区里有了一定量的数据时才一起发送，但有些应用本身数据量并不多，而且需要马上发送，这时，就用紧急指针，这样数据就会马上发送，而不需等待有大量的数据
+
+被动端一定要先bind,告诉主机我是谁....
+
+#### 动态报式套接字
+UDP数据包的推荐长度是512字节,边长的报文要使用指针来填写结构体,这样可以realloc
+
+#### 多点通信
+广播(全网广播,子网广播)|多播|组播
+
++   全网广播:255.255.255.255(受限的广播地址),默认是关闭的,但是可以打开这个开关SO_BROADCAST,使用int setsockopt(int socket,int level,int option_name,void \*opt_val,socklen_t len)进行设置
+    +   SO_BINDTODEVICE:绑定一个网卡
+    +   该地址用于主机配置过程中IP数据报bai的目的地址。此时，主机可能还du不知道它所在网络的网络掩码，甚至连它的IP地址也不知道。在任何情况下，路由器都不转发目的地址为受限的广播地址的数据报，这样的数据报仅出现在本地网络中。
+
+防止内存数据泄露.memset calloc
+
+```
+//sockaddr_in 解决了linux原生的地址信息的问题,sockaddr结构体把地址和端口分开保存
+
+struct sockaddr_in{
+    sa_family_t sin_family; //8
+    uint16_t sin_port;  //16
+    struct in_addr sin_addr; //32
+    char sin_zero[8]; //8
+}__attribute__((packed));
+```
+
+
+#####   UDP的特点
+可以实现多点通信
+
++   socket()
++   bind()
++   sendto()
++   rcvfrom()
++   inet_pton() : 点分式 -> 网络数 proto -> num
++   inet_ntop():    网络数 -> 点分式 num -> proto
++   getsockopt()
++   setsockopt()
+
+
+TTL(Time TO Live):linux64 windows128,可以跳转多少个路由器
+
+#### 流式套接字TCP
+主动端C:
+1.  获得SOCKET:socket()
+2.  给SOCKET取得地址:connect()
+3.  发送链接:send()
+4.  收发消息:recv
+5.  关闭
+
+S段(被动端):
+1.  获得SOCKET:socket()
+2.  给SOCKET取得地址:bind()
+3.  SOCKET设置为监听模式:listen()
+4.  接受链接:accept()
+5.  收发消息
+6.  关闭
+
